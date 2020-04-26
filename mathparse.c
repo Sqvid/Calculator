@@ -1,34 +1,56 @@
 #include <stdio.h>
 #include <string.h>
+#include <math.h>
 #include <ctype.h>
 #include "Lists/Stacks/stack.h"
 #include "Lists/Queues/queue.h"
 
 #define BUFFER 128
 #define CHUNK_SIZE 8
+#define DIVZERO_ERR -8
 
 int isOperator(char token);
+int checkPriority(char operator1, char operator2);
 Queue* strToMathQueue(char* inputString, int maxStringSize);
+int shuntingYard(Queue* inQueue, Stack* opStack, Stack* evalStack);
+double* applyOperation(char operator, double lOperand, double rOperand);
+int popAndEval(char opToken, Stack* evalStack);
 
 int main(void){
-	char inputString[BUFFER];
-	void** data;
+	while(1){
+		char inputString[BUFFER];
+		Stack* opStack = stackCreate(free);
+		Stack* evalStack = stackCreate(free);
 
-	printf("cal>> ");
-	fgets(inputString, sizeof(inputString), stdin);
+		printf("Cal>> ");
+		fgets(inputString, sizeof(inputString), stdin);
 
-	Queue* mathQueue = strToMathQueue(inputString, BUFFER);
+		if(strncmp(inputString, "quit\n", 2) == 0){
+			printf("\nQuitting...\n");
+			stackDestroy(opStack);
+			stackDestroy(evalStack);
+			break;
+		}
 
-	if(mathQueue == NULL){
-		return -1;
+		Queue* inQueue = strToMathQueue(inputString, BUFFER);
+
+		if(inQueue == NULL){
+			continue;
+		}
+
+		if(shuntingYard(inQueue, opStack, evalStack) == DIVZERO_ERR){
+			fprintf(stderr, "Error: Division by zero.");
+			stackDestroy(opStack);
+			stackDestroy(evalStack);
+		} else{
+			printf("ANS>> %g\n", *(double*)stackPeek(evalStack));
+		}
+
+		stackDestroy(opStack);
+		stackDestroy(evalStack);
+		queueDestroy(inQueue);
 	}
 
-	while(getQueueSize(mathQueue) > 0){
-		dequeue(mathQueue, data);
-		printf("%s\n", *(char**)data);
-	}
-
-	queueDestroy(mathQueue);
 	return 0;
 }
 
@@ -43,6 +65,28 @@ int isOperator(char token){
 		default:
 			return 0;
 	}
+}
+
+int checkPriority(char operator1, char operator2){
+	int priority1, priority2;
+
+	if(operator1 == '+' || operator1 == '-'){
+		priority1 = 1;
+	} else if(operator1 == '*' || operator1 == '/'){
+		priority1 = 2;
+	} else if(operator1 == '^'){
+		priority1 = 3;
+	}
+
+	if(operator2 == '+' || operator2 == '-'){
+		priority2 = 1;
+	} else if(operator2 == '*' || operator2 == '/'){
+		priority2 = 2;
+	} else if(operator2 == '^'){
+		priority2 = 3;
+	}
+
+	return priority1 - priority2;
 }
 
 // Converts a math string into a queue. Returns a pointer to the queue if
@@ -61,13 +105,13 @@ Queue* strToMathQueue(char* inputString, int maxStringSize){
 			break;
 		// Necessary to make sure the string is split correctly into
 		// full numbers and not just single digits.
-		} else if(isdigit(token)){
+		} else if(isdigit(token) || token == '.'){
 			int numLen = 1, tokenSize = CHUNK_SIZE;
 			char* numToken = malloc(tokenSize);
 
 			// Count the length of the number by iterating until
 			// token is no longer a digit or decimal point.
-			while(isdigit(inputString[i + numLen]) || (token == '.')){
+			while(isdigit(inputString[i + numLen]) || (inputString[i + numLen] == '.')){
 				// Add more space in chunks if needed.
 				if((numLen + 1) % CHUNK_SIZE == 0){
 					tokenSize += CHUNK_SIZE;
@@ -90,12 +134,9 @@ Queue* strToMathQueue(char* inputString, int maxStringSize){
 			symToken[0] = token;
 			symToken[1] = '\0';
 			enqueue(mathQueue, symToken);
-		//Ignore spaces and tabs.
+		//Ignore spaces, and tabs.
 		} else if(token == ' ' || token == '\t'){
 			continue;
-		} else if(strncmp(inputString, "quit\n", 5) == 0){
-			queueDestroy(mathQueue);
-			return NULL;
 		// Print error and return NULL if none of the token criteria
 		// match.
 		} else{
@@ -106,4 +147,144 @@ Queue* strToMathQueue(char* inputString, int maxStringSize){
 	}
 
 	return mathQueue;
+}
+
+int shuntingYard(Queue* inQueue, Stack* opStack, Stack* evalStack){
+	while(getQueueSize(inQueue) > 0){
+		void** voidToken = malloc(sizeof(void*));
+		dequeue(inQueue, voidToken);
+		char* stringToken = *(char**)voidToken;
+
+		// If the current token is a number.
+		if(isdigit(*stringToken) || *stringToken == '.'){
+			double* mathToken = malloc(sizeof(double));
+			*mathToken = atof(stringToken);
+			stackPush(evalStack, mathToken);
+
+			free(*voidToken);
+			free(voidToken);
+		// If the current token is an operator.
+		} else if(isOperator(*stringToken)){
+			// If operator stack is non-empty and is not topped by
+			// a left bracket.
+			if(getStackSize(opStack) > 0 && *(char*)stackPeek(opStack) != '('){
+				// If there is an operator on the opStack with
+				// greater precedence.
+				while(checkPriority(*stringToken, *(char*)stackPeek(opStack)) <= 0){
+					void** opToken = malloc(sizeof(void*));
+					stackPop(opStack, opToken);
+
+					if(popAndEval(**(char**)opToken, evalStack) == DIVZERO_ERR){
+						free(opToken);
+						return DIVZERO_ERR;
+					}
+
+					free(opToken);
+
+					if(getStackSize(opStack) == 0){
+						break;
+					}
+				}
+
+				stackPush(opStack, stringToken);
+			} else{
+				stackPush(opStack, stringToken);
+			}
+		} else if((*stringToken) == '('){
+			stackPush(opStack, stringToken);
+		} else if((*stringToken) == ')'){
+			while(*(char*)stackPeek(opStack) != '('){
+				void** opToken = malloc(sizeof(void*));
+				stackPop(opStack, opToken);
+
+				if(popAndEval(**(char**)opToken, evalStack) == DIVZERO_ERR){
+					free(opToken);
+					return DIVZERO_ERR;
+				}
+
+				free(opToken);
+			}
+
+			// Dummy variable to hold the left bracket before it is
+			// deallocated.
+			void** tempLBracket = malloc(sizeof(void*));
+			stackPop(opStack, tempLBracket);
+			// Discard brackets.
+			free(*tempLBracket);
+			free(tempLBracket);
+			free(*voidToken);
+			free(voidToken);
+		}
+	}
+
+	while(getStackSize(opStack) > 0){
+		void** opToken = malloc(sizeof(void*));
+		stackPop(opStack, opToken);
+
+		if(popAndEval(**(char**)opToken, evalStack) == DIVZERO_ERR){
+			free(opToken);
+			return DIVZERO_ERR;
+		}
+
+		free(opToken);
+	}
+
+	return 0;
+}
+
+double* applyOperation(char operator, double lOperand, double rOperand){
+	double* result = malloc(sizeof(double));
+
+	switch(operator){
+		case '+':
+			*result = lOperand + rOperand;
+			return result;
+		case '-':
+			*result = lOperand - rOperand;
+			return result;
+		case '*':
+			*result = lOperand * rOperand;
+			return result;
+		case '/':
+			*result = lOperand / rOperand;
+			return result;
+		case '^':
+			*result = pow(lOperand, rOperand);
+			return result;
+	}
+
+	return 0;
+}
+
+int popAndEval(char opToken, Stack* evalStack){
+	// If the evalStack has enough items to
+	// evaluate.
+	if(getStackSize(evalStack) >= 2){
+		void** lOperand = malloc(sizeof(void*));
+		void** rOperand = malloc(sizeof(void*));
+		double *result;
+		stackPop(evalStack, rOperand);
+		stackPop(evalStack, lOperand);
+
+		if((**(double**)rOperand) == 0 && opToken == '/'){
+			free(*lOperand);
+			free(lOperand);
+			free(*rOperand);
+			free(rOperand);
+			return DIVZERO_ERR;
+		}
+
+		result = applyOperation(\
+				opToken,\
+				**(double**)lOperand,\
+				**(double**)rOperand);
+
+		stackPush(evalStack, result);
+		free(*lOperand);
+		free(lOperand);
+		free(*rOperand);
+		free(rOperand);
+	}
+
+	return 0;
 }
