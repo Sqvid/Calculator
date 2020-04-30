@@ -12,7 +12,8 @@ typedef enum {
 	divZero,
 	unkownToken,
 	unpairedBrackets,
-	extraDecimalSep
+	extraDecimalSep,
+	hangingDecimalSep
 } Error;
 
 typedef enum {
@@ -31,11 +32,6 @@ typedef enum {
 	left,
 	right
 } AssocType;
-
-typedef enum {
-	unitary = 1,
-	binary
-} OpType;
 
 Queue* strToMathQueue(char* inputString, int maxStringSize);
 int shuntingYard(Queue* inQueue, Stack* opStack, Stack* evalStack);
@@ -93,6 +89,20 @@ Queue* strToMathQueue(char* inputString, int maxStringSize){
 	// formatted file.
 	for(int i=0; i<maxStringSize; ++i){
 		char token = inputString[i];
+		// Is the variable a positve (+) or negative (-) sign.
+		int isSign = 0;
+
+		if(token == '+' || token == '-'){
+			if(i == 0){
+				isSign = 1;
+			} else{
+				TokenType prevToken = tokenType(inputString + i - 1);
+
+				if(prevToken == lbracket || prevToken == operator){
+					isSign = 1;
+				}
+			}
+		}
 
 		// Reached the end of the string early.
 		if(tokenType(&token) == EOL){
@@ -105,9 +115,17 @@ Queue* strToMathQueue(char* inputString, int maxStringSize){
 			break;
 		// Necessary to make sure the string is split correctly into
 		// full numbers and not just single digits.
-		} else if(tokenType(&token) == digit || tokenType(&token) == decimalSep){
+		} else if(tokenType(&token) == digit \
+				|| tokenType(&token) == decimalSep \
+				|| isSign){
+
 			int numLen = 1, tokenSize = CHUNK_SIZE;
 			char* numToken = malloc(tokenSize);
+
+			// Ignore the positive sign as it is assumed.
+			if(token == '+'){
+				++i;
+			}
 
 			// Count the length of the number by iterating until
 			// token is no longer a digit or decimal point.
@@ -123,7 +141,7 @@ Queue* strToMathQueue(char* inputString, int maxStringSize){
 			}
 
 			// Copy data over to the queue.
-			strncpy(numToken, &inputString[i], numLen);
+			strncpy(numToken, inputString + i, numLen);
 			numToken[numLen] = '\0';
 			enqueue(mathQueue, numToken);
 
@@ -156,9 +174,19 @@ int shuntingYard(Queue* inQueue, Stack* opStack, Stack* evalStack){
 	while(getQueueSize(inQueue) > 0){
 		void** token = malloc(sizeof(void*));
 		dequeue(inQueue, token);
+		int isSign = 0;
+
+		if(**(char**)token == '+' || **(char**)token == '-'){
+			// If the following character is a digit.
+			if(tokenType((*(char**)token + 1)) == digit){
+				isSign = 1;
+			}
+		}
 
 		// If the current token is a number.
-		if(tokenType(*token) == digit || tokenType(*token) == decimalSep){
+		if(tokenType(*token) == digit \
+				|| tokenType(*token) == decimalSep \
+				|| isSign){
 			double* mathToken = malloc(sizeof(double));
 			*mathToken = atof(*(char**)token);
 			stackPush(evalStack, mathToken);
