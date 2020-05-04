@@ -5,12 +5,15 @@
 
 #define BUFFER 128
 #define CHUNK_SIZE 8
-#define DIVZERO_ERR -8
+//#define DIVZERO_ERR -8
 
 typedef enum {
+	success,
 	divZero,
-	unkownToken,
-	unpairedBrackets,
+	evalFail,
+	unknownToken,
+	unpairedBracket,
+	noDigit,
 	extraDecimalSep,
 	hangingDecimalSep
 } Error;
@@ -33,12 +36,13 @@ typedef enum {
 } AssocType;
 
 char** strToMathArray(char* inputString);
-double shuntingYard(char* inputString);
-int popAndEval(Stack* opStack, Stack* evalStack);
-double* applyOperation(void* operatorPtr, void* lOperandPtr, void* rOperandPtr);
-int checkPriority(void* operator1Ptr, void* operator2Ptr);
+void shuntingYard(char* inputString);
+Error popAndEval(Stack* opStack, Stack* evalStack);
+double* applyOperation(void* operator, void* lOperandPtr, void* rOperandPtr);
+int checkPriority(void* operator1, void* operator2);
 AssocType checkAssoc(void* operator);
 TokenType tokenType(void* token);
+void printError(Error error);
 
 int main(void){
 	while(1){
@@ -52,8 +56,7 @@ int main(void){
 			break;
 		}
 
-		double result = shuntingYard(inputString);
-		printf("ANS>> %g\n", result);
+		shuntingYard(inputString);
 	}
 
 	return 0;
@@ -64,10 +67,9 @@ int main(void){
 char** strToMathArray(char* inputString){
 	char** exprArray = malloc(CHUNK_SIZE * sizeof(char*));
 	int exprPos = 0, exprSize = CHUNK_SIZE;
+	int lbracketCount = 0, rbracketCount = 0, digitCount = 0, emptyInput = 0;
+	Error parseStatus = success;
 
-	// Using a for loop so that iterations are capped in case of string
-	// formatting error. E.g. when reading expressions from a badly
-	// formatted file.
 	for(unsigned int i=0; i<strlen(inputString); ++i){
 		// Reallocate more space in chunks if necessary.
 		if((exprPos + 1) % CHUNK_SIZE == 0){
@@ -76,6 +78,7 @@ char** strToMathArray(char* inputString){
 		}
 
 		char token = inputString[i];
+		TokenType tokenGroup = tokenType(&token);
 
 		// Is the variable a positive (+) or negative (-) sign.
 		int isSign = 0;
@@ -92,20 +95,25 @@ char** strToMathArray(char* inputString){
 			}
 		}
 
-		if(tokenType(&token) == EOL){
+		if(tokenGroup == EOL){
 			char* endToken = malloc(1);
 			endToken[0] = '\n';
-
 			exprArray[exprPos] = endToken;
 			++exprPos;
 
+			emptyInput = !strncmp(inputString, "\n", 1);
+
 		// Necessary to make sure the string is split correctly into
 		// full numbers and not just single digits.
-		} else if(tokenType(&token) == digit || \
-				tokenType(&token) == decimalSep || isSign){
+		} else if(tokenGroup == digit || \
+				tokenGroup == decimalSep \
+				|| isSign){
 
-			int numLen = 1, tokenSize = CHUNK_SIZE;
+			int numLen = 1, tokenSize = CHUNK_SIZE, sepCount = 0;
 			char* numToken = malloc(tokenSize);
+
+			(tokenGroup == digit) ? (digitCount = 1) : (digitCount = 0);
+			(tokenGroup == decimalSep) ? (sepCount = 1) : (sepCount = 0);
 
 			// Ignore the positive sign as it is assumed.
 			if(token == '+'){
@@ -114,8 +122,17 @@ char** strToMathArray(char* inputString){
 
 			// Count the length of the number by iterating until
 			// token is no longer a digit or decimal point.
-			while(tokenType(inputString + i + numLen) == digit\
-					|| tokenType(inputString + i + numLen) == decimalSep){
+			while(tokenType(inputString + i + numLen) == digit \
+					|| tokenType(inputString + i + numLen)\
+					== decimalSep){
+
+				// Track number of digits and decimal points.
+				if(tokenType(inputString + i + numLen) == digit){
+					++digitCount;
+				} else{
+					++sepCount;
+				}
+
 				// Add more space in chunks if needed.
 				if((numLen + 1) % CHUNK_SIZE == 0){
 					tokenSize += CHUNK_SIZE;
@@ -133,39 +150,72 @@ char** strToMathArray(char* inputString){
 
 			// Skip to after the number.
 			i += numLen - 1;
+
+			if(sepCount > 1){
+				parseStatus = extraDecimalSep;
+			}
+
 		// Handle brackets and operators.
-		} else if(tokenType(&token) == lbracket \
-				|| tokenType(&token) == rbracket
-				|| tokenType(&token) == operator){
+		} else if(tokenGroup == lbracket \
+				|| tokenGroup == rbracket \
+				|| tokenGroup == operator){
+
+			if(tokenGroup == lbracket){
+				++lbracketCount;
+			} else if(tokenGroup == rbracket){
+				++rbracketCount;
+			}
+
 			char* symToken = malloc(sizeof(char*));
 			*symToken = token;
 			*(symToken + 1) = '\0';
 			exprArray[exprPos] = symToken;
 			++exprPos;
-		// Ignore spaces, and tabs.
-		} else if(tokenType(&token) == whitespace){
-			continue;
-		} else if(tokenType(&token) == unknown){
-			char* endToken = malloc(1);
-			endToken[0] = '\n';
 
-			exprArray[exprPos] = endToken;
-			++exprPos;
+		// Ignore spaces, and tabs.
+		} else if(tokenGroup == whitespace){
+			continue;
+		} else if(tokenGroup == unknown){
+			parseStatus = unknownToken;
+			fprintf(stderr, "Error: '%c' is an unrecognised token.\n", token);
 			break;
 		}
+	}
+
+	if(lbracketCount != rbracketCount){
+		parseStatus = unpairedBracket;
+	} else if(digitCount == 0 && emptyInput == 0 \
+			&& parseStatus != unknownToken){
+		parseStatus = noDigit;
+	}
+
+	if(parseStatus != success){
+		printError(parseStatus);
+
+		// Deallocate all tokens.
+		for(int i=0; i<exprPos; ++i){
+			free(exprArray[i]);
+		}
+
+		// Mark exprArray as empty.
+		char* endToken = malloc(1);
+		endToken[0] = '\n';
+		exprArray[0] = endToken;
 	}
 
 	return exprArray;
 }
 
-double shuntingYard(char* inputString){
+void shuntingYard(char* inputString){
 	Stack* opStack = stackCreate(free);
 	Stack* evalStack = stackCreate(free);
 	char** exprArray = strToMathArray(inputString);
+	Error evalStatus = success;
 
 	int exprPos = 0;
-	do{
+	while(*exprArray[exprPos] != '\n'){
 		char* token = exprArray[exprPos];
+		TokenType tokenGroup = tokenType(token);
 		int isSign = 0;
 
 		if(*token == '+' || *token == '-'){
@@ -176,9 +226,7 @@ double shuntingYard(char* inputString){
 		}
 
 		// If the current token is a number.
-		if(tokenType(token) == digit \
-				|| tokenType(token) == decimalSep || isSign){
-
+		if(tokenGroup == digit || tokenGroup == decimalSep || isSign){
 			double* mathToken = malloc(sizeof(double));
 			*mathToken = atof(token);
 			stackPush(evalStack, mathToken);
@@ -186,19 +234,16 @@ double shuntingYard(char* inputString){
 			free(token);
 
 		// If the current token is an operator.
-		} else if(tokenType(token) == operator){
+		} else if(tokenGroup == operator){
 			// If operator stack is non-empty and is not topped by
 			// a left bracket.
-			if(getStackSize(opStack) > 0 && *(char*)stackPeek(opStack) != '('){
+			if(getStackSize(opStack) > 0 \
+					&& *(char*)stackPeek(opStack) != '('){
 				// If there is an operator on the opStack with
 				// greater precedence.
 				while(checkPriority(token, stackPeek(opStack)) <= 0){
-					if(popAndEval(opStack, evalStack) == DIVZERO_ERR){
-						stackDestroy(opStack);
-						stackDestroy(evalStack);
-						free(exprArray);
-						return DIVZERO_ERR;
-					}
+					evalStatus = popAndEval(opStack, evalStack);
+					printError(evalStatus);
 
 					if(getStackSize(opStack) == 0){
 						break;
@@ -208,16 +253,12 @@ double shuntingYard(char* inputString){
 
 			stackPush(opStack, token);
 
-		} else if(tokenType(token) == lbracket){
+		} else if(tokenGroup == lbracket){
 			stackPush(opStack, token);
-		} else if(tokenType(token) == rbracket){
+		} else if(tokenGroup == rbracket){
 			while(*(char*)stackPeek(opStack) != '('){
-				if(popAndEval(opStack, evalStack) == DIVZERO_ERR){
-					stackDestroy(opStack);
-					stackDestroy(evalStack);
-					free(exprArray);
-					return DIVZERO_ERR;
-				}
+				evalStatus = popAndEval(opStack, evalStack);
+				printError(evalStatus);
 			}
 
 			// Dummy variable to hold the left bracket before it is
@@ -231,44 +272,44 @@ double shuntingYard(char* inputString){
 		}
 
 		++exprPos;
-	} while(*exprArray[exprPos] != '\n');
+	}
 
 	// Free the endToken (marked by the newline).
 	free(exprArray[exprPos]);
 
 	while(getStackSize(opStack) > 0){
-		if(popAndEval(opStack, evalStack) == DIVZERO_ERR){
-			stackDestroy(opStack);
-			stackDestroy(evalStack);
-			free(exprArray);
-			return DIVZERO_ERR;
-		}
+		evalStatus = popAndEval(opStack, evalStack);
+		printError(evalStatus);
 	}
 
-	double result = *(double*)stackPeek(evalStack);
+	if(exprPos != 0 && evalStatus == success){
+		double result = *(double*)stackPeek(evalStack);
+		printf("ANS>> %g\n", result);
+	}
+
 	stackDestroy(opStack);
 	stackDestroy(evalStack);
 	free(exprArray);
-
-	return result;
 }
 
-int popAndEval(Stack* opStack, Stack* evalStack){
+Error popAndEval(Stack* opStack, Stack* evalStack){
 	void** opToken = malloc(sizeof(void*));
 	stackPop(opStack, opToken);
-	double *result;
 
 	if(getStackSize(evalStack) == 1){
 		void** operand = malloc(sizeof(void*));
 		stackPop(evalStack, operand);
 
 		if(**(char**)opToken != '+' && **(char**)opToken != '-'){
-			// ***Handle Error***
+			free(*operand);
+			free(operand);
+			free(*opToken);
+			free(opToken);
+			return evalFail;
 		} else{
 			if(**(char**)opToken == '-'){
-				**(double**)operand = -1 * (**(double**)operand);
+				**(double**)operand *= -1;
 				stackPush(evalStack, *operand);
-
 			}
 		}
 
@@ -280,6 +321,7 @@ int popAndEval(Stack* opStack, Stack* evalStack){
 	if(getStackSize(evalStack) >= 2){
 		void** lOperand = malloc(sizeof(void*));
 		void** rOperand = malloc(sizeof(void*));
+		double *result;
 		stackPop(evalStack, rOperand);
 		stackPop(evalStack, lOperand);
 
@@ -290,7 +332,7 @@ int popAndEval(Stack* opStack, Stack* evalStack){
 			free(lOperand);
 			free(*rOperand);
 			free(rOperand);
-			return DIVZERO_ERR;
+			return divZero;
 		}
 
 		result = applyOperation(*opToken,*lOperand,*rOperand);
@@ -304,16 +346,15 @@ int popAndEval(Stack* opStack, Stack* evalStack){
 
 	free(*opToken);
 	free(opToken);
-	return 0;
+	return success;
 }
 
-double* applyOperation(void* operatorPtr, void* lOperandPtr, void* rOperandPtr){
-	double* result = malloc(sizeof(double));
-	char operator = *(char*)operatorPtr;
+double* applyOperation(void* operator, void* lOperandPtr, void* rOperandPtr){
 	double lOperand = *(double*)lOperandPtr;
 	double rOperand = *(double*)rOperandPtr;
+	double* result = malloc(sizeof(double));
 
-	switch(operator){
+	switch(*(char*)operator){
 		case '+':
 			*result = lOperand + rOperand;
 			break;
@@ -334,25 +375,35 @@ double* applyOperation(void* operatorPtr, void* lOperandPtr, void* rOperandPtr){
 	return result;
 }
 
-int checkPriority(void* operator1Ptr, void* operator2Ptr){
-	char operator1 = *(char*) operator1Ptr;
-	char operator2 = *(char*) operator2Ptr;
+int checkPriority(void* operator1, void* operator2){
 	int priority1, priority2;
 
-	if(operator1 == '+' || operator1 == '-'){
-		priority1 = 1;
-	} else if(operator1 == '*' || operator1 == '/'){
-		priority1 = 2;
-	} else if(operator1 == '^'){
-		priority1 = 3;
+	switch(*(char*)operator1){
+		case '+':
+		case '-':
+			priority1 = 1;
+			break;
+		case '*':
+		case '/':
+			priority1 = 2;
+			break;
+		case '^':
+			priority1 = 3;
+			break;
 	}
 
-	if(operator2 == '+' || operator2 == '-'){
-		priority2 = 1;
-	} else if(operator2 == '*' || operator2 == '/'){
-		priority2 = 2;
-	} else if(operator2 == '^'){
-		priority2 = 3;
+	switch(*(char*)operator2){
+		case '+':
+		case '-':
+			priority2 = 1;
+			break;
+		case '*':
+		case '/':
+			priority2 = 2;
+			break;
+		case '^':
+			priority2 = 3;
+			break;
 	}
 
 	return priority1 - priority2;
@@ -406,4 +457,26 @@ TokenType tokenType(void* token){
 	// Add function patterns in if-else blocks.
 
 	return unknown;
+}
+
+void printError(Error error){
+	switch(error){
+		case evalFail:
+			fprintf(stderr, "Error: Failed to evaluate expression.\n");
+			break;
+		case divZero:
+			fprintf(stderr, "Error: Division by zero.\n");
+			break;
+		case unpairedBracket:
+			fprintf(stderr, "Error: Unpaired brackets.\n");
+			break;
+		case noDigit:
+			fprintf(stderr, "Error: operands must contain at least one digit.\n");
+			break;
+		case extraDecimalSep:
+			fprintf(stderr, "Error: Extra decimal point.\n");
+			break;
+		default:
+			break;
+	}
 }
