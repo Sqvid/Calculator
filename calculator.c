@@ -60,11 +60,13 @@ int main(void){
 	return 0;
 }
 
+// Implements the shunting yard algorithm to evaluate the expression on a
+// reverse polish stack.
 void shuntingYard(char* inputString){
 	Stack* opStack = stackCreate(free);
 	Stack* evalStack = stackCreate(free);
 	char** exprArray = strToMathArray(inputString);
-	Status evalStatus = success, tmpStatus;
+	Status tmpStatus, evalStatus = success;
 	int exprPos, prevOpPos = -1;
 
 	for(exprPos=0; *exprArray[exprPos] != '\n'; ++exprPos){
@@ -106,7 +108,6 @@ void shuntingYard(char* inputString){
 
 					if(tmpStatus != success){
 						evalStatus = tmpStatus;
-						printStatus(evalStatus);
 					}
 
 					if(getStackSize(opStack) == 0){
@@ -126,7 +127,6 @@ void shuntingYard(char* inputString){
 
 				if(tmpStatus != success){
 					evalStatus = tmpStatus;
-					printStatus(evalStatus);
 				}
 			}
 
@@ -145,9 +145,14 @@ void shuntingYard(char* inputString){
 	free(exprArray[exprPos]);
 
 	while(getStackSize(opStack) > 0 && evalStatus == success){
-		evalStatus = popAndEval(opStack, evalStack);
-		printStatus(evalStatus);
+		tmpStatus = popAndEval(opStack, evalStack);
+
+		if(tmpStatus != success){
+			evalStatus = tmpStatus;
+		}
 	}
+
+	printStatus(evalStatus);
 
 	if(exprPos != 0 && evalStatus == success){
 		double result = *(double*)stackPeek(evalStack);
@@ -212,11 +217,10 @@ char** strToMathArray(char* inputString){
 				tokenGroup == decimalSep \
 				|| isSign){
 
-			int numLen = 1, tokenSize = CHUNK_SIZE, sepCount = 0;
+			int numLen = 1, tokenSize = CHUNK_SIZE, sepCount;
 			char* numToken = malloc(tokenSize);
 
 			(tokenGroup == digit) ? (digitCount = 1) : (digitCount = 0);
-			(tokenGroup == decimalSep) ? (sepCount = 1) : (sepCount = 0);
 
 			// Ignore the positive sign as it is assumed.
 			if(token == '+'){
@@ -232,8 +236,6 @@ char** strToMathArray(char* inputString){
 				// Track number of digits and decimal points.
 				if(tokenType(inputString + i + numLen) == digit){
 					++digitCount;
-				} else{
-					++sepCount;
 				}
 
 				// Add more space in chunks if needed.
@@ -254,13 +256,16 @@ char** strToMathArray(char* inputString){
 			// Skip to after the number.
 			i += numLen - 1;
 
+			// The number of decimal places in the number.
+			sepCount = numLen - digitCount;
+
 			if(sepCount > 1){
 				parseStatus = extraDecimalSep;
+				break;
 			}
 
 		// Handle brackets and operators.
-		} else if(tokenGroup == lbracket \
-				|| tokenGroup == rbracket \
+		} else if(tokenGroup == lbracket || tokenGroup == rbracket \
 				|| tokenGroup == operator){
 
 			if(tokenGroup == lbracket){
@@ -289,6 +294,7 @@ char** strToMathArray(char* inputString){
 		parseStatus = unpairedBracket;
 	} else if(digitCount == 0 && emptyInput == 0 \
 			&& parseStatus != unknownToken){
+
 		parseStatus = noDigit;
 	}
 
@@ -310,6 +316,9 @@ char** strToMathArray(char* inputString){
 	return exprArray;
 }
 
+// Pops operands off the evaluation stack, applies the next mathematical
+// procedure, and pushes the result back.
+// Returns the status of the evaluation.
 Status popAndEval(Stack* opStack, Stack* evalStack){
 	void** opToken = malloc(sizeof(void*));
 	stackPop(opStack, opToken);
@@ -332,51 +341,44 @@ Status popAndEval(Stack* opStack, Stack* evalStack){
 
 	// evalStack has enough items for binary operator evaluation.
 	} else{
-		// + and - are to be treated as positive and negative signs.
+		// (-) to be treated as a negative sign.
 		if(getStackSize(opStack) >= 1 \
 				&& *(char*)stackPeek(opStack) != '(' \
 				&& checkPriority(*opToken, stackPeek(opStack)) <= 0 \
-				&& (**(char**)opToken == '+' \
-					|| **(char**)opToken == '-')){
+				&& **(char**)opToken == '-'){
 
-			if(**(char**)opToken == '-'){
-				void** operand = malloc(sizeof(void*));
-				stackPop(evalStack, operand);
+			void** operand = malloc(sizeof(void*));
+			stackPop(evalStack, operand);
 
-				**(double**)operand *= -1;
-				stackPush(evalStack, *operand);
+			**(double**)operand *= -1;
+			stackPush(evalStack, *operand);
 
-				free(operand);
+			free(operand);
+		} else{
+			void** lOperand = malloc(sizeof(void*));
+			void** rOperand = malloc(sizeof(void*));
+			double *result;
+			stackPop(evalStack, rOperand);
+			stackPop(evalStack, lOperand);
+
+			if((**(double**)rOperand) == 0 && **(char**)opToken == '/'){
+				free(*opToken);
+				free(opToken);
+				free(*lOperand);
+				free(lOperand);
+				free(*rOperand);
+				free(rOperand);
+				return divZero;
 			}
 
-			free(*opToken);
-			free(opToken);
-			return success;
-		}
+			result = applyOperation(*opToken,*lOperand,*rOperand);
 
-		void** lOperand = malloc(sizeof(void*));
-		void** rOperand = malloc(sizeof(void*));
-		double *result;
-		stackPop(evalStack, rOperand);
-		stackPop(evalStack, lOperand);
-
-		if((**(double**)rOperand) == 0 && **(char**)opToken == '/'){
-			free(*opToken);
-			free(opToken);
+			stackPush(evalStack, result);
 			free(*lOperand);
 			free(lOperand);
 			free(*rOperand);
 			free(rOperand);
-			return divZero;
 		}
-
-		result = applyOperation(*opToken,*lOperand,*rOperand);
-
-		stackPush(evalStack, result);
-		free(*lOperand);
-		free(lOperand);
-		free(*rOperand);
-		free(rOperand);
 	}
 
 	free(*opToken);
@@ -384,6 +386,7 @@ Status popAndEval(Stack* opStack, Stack* evalStack){
 	return success;
 }
 
+// Applies simple arithmetic operations.
 double* applyOperation(void* operator, void* lOperandPtr, void* rOperandPtr){
 	double lOperand = *(double*)lOperandPtr;
 	double rOperand = *(double*)rOperandPtr;
@@ -499,6 +502,7 @@ TokenType tokenType(void* token){
 	return unknown;
 }
 
+// Prints the corresponding message to the supplied status.
 void printStatus(Status status){
 	switch(status){
 		case evalFail:
