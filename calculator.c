@@ -13,6 +13,7 @@ typedef enum {
 	unknownToken,
 	unpairedBracket,
 	noDigit,
+	noOperator,
 	extraDecimalSep,
 } Status;
 
@@ -66,6 +67,7 @@ void shuntingYard(char* inputString){
 	Stack* opStack = stackCreate(free);
 	Stack* evalStack = stackCreate(free);
 	char** exprArray = strToMathArray(inputString);
+
 	Status tmpStatus, evalStatus = success;
 	int exprPos, prevOpPos = -1;
 
@@ -99,7 +101,7 @@ void shuntingYard(char* inputString){
 
 			// If operator stack is non-empty and is not topped by
 			// a left bracket.
-			if(getStackSize(opStack) > 0 \
+			if(getStackSize(opStack) > 0
 					&& *(char*)stackPeek(opStack) != '('){
 				// While there is an operator on the opStack
 				// with greater or equal precedence.
@@ -122,21 +124,27 @@ void shuntingYard(char* inputString){
 		} else if(tokenGroup == lbracket){
 			stackPush(opStack, token);
 		} else if(tokenGroup == rbracket){
-			while(*(char*)stackPeek(opStack) != '('){
-				tmpStatus = popAndEval(opStack, evalStack);
+			if(getStackSize(opStack) != 0){
+				while(*(char*)stackPeek(opStack) != '('){
+					tmpStatus = popAndEval(opStack, evalStack);
 
-				if(tmpStatus != success){
-					evalStatus = tmpStatus;
+					if(tmpStatus != success){
+						evalStatus = tmpStatus;
+					}
 				}
+
+				// Dummy variable to hold the left bracket before it is
+				// deallocated.
+				void** tempLBracket = malloc(sizeof(void*));
+				stackPop(opStack, tempLBracket);
+				// Discard left bracket.
+				free(*tempLBracket);
+				free(tempLBracket);
+			} else{
+				evalStatus = evalFail;
 			}
 
-			// Dummy variable to hold the left bracket before it is
-			// deallocated.
-			void** tempLBracket = malloc(sizeof(void*));
-			stackPop(opStack, tempLBracket);
-			// Discard brackets.
-			free(*tempLBracket);
-			free(tempLBracket);
+			// Discard right bracket.
 			free(token);
 		}
 	}
@@ -169,12 +177,13 @@ void shuntingYard(char* inputString){
 char** strToMathArray(char* inputString){
 	int exprPos = 0, exprSize = CHUNK_SIZE;
 	char** exprArray = malloc(exprSize * sizeof(char*));
-	int lbracketCount = 0, rbracketCount = 0, digitCount = 0, emptyInput = 0;
+	int lbracketCount = 0, rbracketCount = 0, digitCount = 0,
+		emptyInput = 0, opCount = 0;
 	Status parseStatus = success;
 
 	for(unsigned int i=0; i<strlen(inputString); ++i){
 		// Reallocate more space in chunks if necessary.
-		if((exprPos + 1) % CHUNK_SIZE == 0){
+		if(exprPos % CHUNK_SIZE == 0){
 			exprSize += CHUNK_SIZE;
 			exprArray = realloc(exprArray, exprSize * sizeof(char*));
 		}
@@ -193,8 +202,8 @@ char** strToMathArray(char* inputString){
 			} else{
 				TokenType prevToken = tokenType(inputString + i - 1);
 
-				if((prevToken == lbracket \
-						|| prevToken == operator) \
+				if((prevToken == lbracket
+						|| prevToken == operator)
 						&& nextToken == digit){
 
 					isSign = 1;
@@ -209,12 +218,12 @@ char** strToMathArray(char* inputString){
 			exprArray[exprPos] = endToken;
 			++exprPos;
 
-			emptyInput = !strncmp(inputString, "\n", 1);
+			emptyInput = (*inputString == '\n');
 
 		// Necessary to make sure the string is split correctly into
 		// full numbers and not just single digits.
-		} else if(tokenGroup == digit || \
-				tokenGroup == decimalSep \
+		} else if(tokenGroup == digit ||
+				tokenGroup == decimalSep
 				|| isSign){
 
 			int numLen = 1, tokenSize = CHUNK_SIZE, sepCount;
@@ -229,19 +238,19 @@ char** strToMathArray(char* inputString){
 
 			// Count the length of the number by iterating until
 			// token is no longer a digit or decimal point.
-			while(tokenType(inputString + i + numLen) == digit \
-					|| tokenType(inputString + i + numLen)\
+			while(tokenType(inputString + i + numLen) == digit
+					|| tokenType(inputString + i + numLen)
 					== decimalSep){
-
-				// Track number of digits and decimal points.
-				if(tokenType(inputString + i + numLen) == digit){
-					++digitCount;
-				}
 
 				// Add more space in chunks if needed.
 				if((numLen + 1) % CHUNK_SIZE == 0){
 					tokenSize += CHUNK_SIZE;
 					numToken = realloc(numToken, tokenSize);
+				}
+
+				// Track number of digits and decimal points.
+				if(tokenType(inputString + i + numLen) == digit){
+					++digitCount;
 				}
 
 				++numLen;
@@ -265,13 +274,15 @@ char** strToMathArray(char* inputString){
 			}
 
 		// Handle brackets and operators.
-		} else if(tokenGroup == lbracket || tokenGroup == rbracket \
+		} else if(tokenGroup == lbracket || tokenGroup == rbracket
 				|| tokenGroup == operator){
 
 			if(tokenGroup == lbracket){
 				++lbracketCount;
 			} else if(tokenGroup == rbracket){
 				++rbracketCount;
+			} else{
+				++opCount;
 			}
 
 			char* symToken = malloc(sizeof(char*));
@@ -292,10 +303,12 @@ char** strToMathArray(char* inputString){
 
 	if(lbracketCount != rbracketCount){
 		parseStatus = unpairedBracket;
-	} else if(digitCount == 0 && emptyInput == 0 \
+	} else if(digitCount == 0 && emptyInput == 0
 			&& parseStatus != unknownToken){
 
 		parseStatus = noDigit;
+	} else if(opCount == 0 && emptyInput == 0){
+		parseStatus = noOperator;
 	}
 
 	if(parseStatus != success){
@@ -342,9 +355,9 @@ Status popAndEval(Stack* opStack, Stack* evalStack){
 	// evalStack has enough items for binary operator evaluation.
 	} else{
 		// (-) to be treated as a negative sign.
-		if(getStackSize(opStack) >= 1 \
-				&& *(char*)stackPeek(opStack) != '(' \
-				&& checkPriority(*opToken, stackPeek(opStack)) <= 0 \
+		if(getStackSize(opStack) >= 1
+				&& *(char*)stackPeek(opStack) != '('
+				&& checkPriority(*opToken, stackPeek(opStack)) <= 0
 				&& **(char**)opToken == '-'){
 
 			void** operand = malloc(sizeof(void*));
@@ -516,6 +529,9 @@ void printStatus(Status status){
 			break;
 		case noDigit:
 			fprintf(stderr, "Error: operands must contain at least one digit.\n");
+			break;
+		case noOperator:
+			fprintf(stderr, "Error: expressions must contain at least one operator.\n");
 			break;
 		case extraDecimalSep:
 			fprintf(stderr, "Error: Extra decimal point.\n");
