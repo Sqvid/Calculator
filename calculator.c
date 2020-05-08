@@ -38,8 +38,8 @@ void shuntingYard(char* inputString);
 char** strToMathArray(char* inputString);
 Status popAndEval(Stack* opStack, Stack* evalStack);
 double* applyOperation(void* operator, void* lOperandPtr, void* rOperandPtr);
-int checkPriority(void* operator1, void* operator2);
-AssocType checkAssoc(void* operator);
+int getPriority(void* operator1, void* operator2);
+AssocType getAssoc(void* operator);
 TokenType tokenType(void* token);
 void printStatus(Status status);
 
@@ -105,7 +105,12 @@ void shuntingYard(char* inputString){
 					&& *(char*)stackPeek(opStack) != '('){
 				// While there is an operator on the opStack
 				// with greater or equal precedence.
-				while(checkPriority(token, stackPeek(opStack)) <= 0){
+				while(getPriority(token, stackPeek(opStack)) <= 0){
+					if(getPriority(token, stackPeek(opStack)) == 0
+							&& getAssoc(token) == right){
+						break;
+					}
+
 					tmpStatus = popAndEval(opStack, evalStack);
 
 					if(tmpStatus != success){
@@ -357,7 +362,7 @@ Status popAndEval(Stack* opStack, Stack* evalStack){
 		// (-) to be treated as a negative sign.
 		if(getStackSize(opStack) >= 1
 				&& *(char*)stackPeek(opStack) != '('
-				&& checkPriority(*opToken, stackPeek(opStack)) <= 0
+				&& getPriority(*opToken, stackPeek(opStack)) <= 0
 				&& **(char**)opToken == '-'){
 
 			void** operand = malloc(sizeof(void*));
@@ -427,7 +432,7 @@ double* applyOperation(void* operator, void* lOperandPtr, void* rOperandPtr){
 }
 
 // Check if the priority of operator1 relative to operator2.
-int checkPriority(void* operator1, void* operator2){
+int getPriority(void* operator1, void* operator2){
 	int priority1, priority2;
 
 	switch(*(char*)operator1){
@@ -461,7 +466,7 @@ int checkPriority(void* operator1, void* operator2){
 	return priority1 - priority2;
 }
 
-AssocType checkAssoc(void* operator){
+AssocType getAssoc(void* operator){
 	switch(*(char*)operator){
 		case '^':
 		case '!':
