@@ -10,7 +10,7 @@ typedef struct ListElement_{
 	struct ListElement_* next;
 } ListElement;
 
-typedef struct List_{
+typedef struct{
 	int size;
 
 	ListElement* head;
@@ -27,7 +27,6 @@ typedef struct List_{
 #define isListHead(list, element) list->head == element ? 1 : 0
 #define isListTail(list, element) list->tail == element ? 1 : 0
 
-//void listInit(List* list, void (*destroyFunction)(void* data));
 List* listCreate(void (*destroyFunction)(void* data));
 int listAddNext(List* list, ListElement* element, const void* data);
 int listDelNext(List* list, ListElement* element, void** data);

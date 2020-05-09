@@ -30,6 +30,14 @@ typedef enum {
 } TokenType;
 
 typedef enum {
+	none,
+	sqrt_,
+	sin_,
+	cos_,
+	tan_
+} FunctionType;
+
+typedef enum {
 	left,
 	right
 } AssocType;
@@ -38,9 +46,11 @@ void shuntingYard(char* inputString);
 char** strToMathArray(char* inputString);
 Status popAndEval(Stack* opStack, Stack* evalStack);
 double* applyOperation(void* operator, void* lOperandPtr, void* rOperandPtr);
+double* applyFunction(FunctionType functionKey, void* operandPtr);
 int getPriority(void* operator1, void* operator2);
 AssocType getAssoc(void* operator);
 TokenType tokenType(void* token);
+FunctionType functionType(void* token);
 void printStatus(Status status);
 
 int main(void){
@@ -151,6 +161,8 @@ void shuntingYard(char* inputString){
 
 			// Discard right bracket.
 			free(token);
+		} else if(tokenGroup == function){
+			stackPush(opStack, token);
 		}
 	}
 
@@ -194,7 +206,7 @@ char** strToMathArray(char* inputString){
 		}
 
 		char token = inputString[i];
-		TokenType tokenGroup = tokenType(&token);
+		TokenType tokenGroup = tokenType(inputString + i);
 
 		// Is the variable a positive (+) or negative (-) sign.
 		int isSign = 0;
@@ -296,6 +308,39 @@ char** strToMathArray(char* inputString){
 			exprArray[exprPos] = symToken;
 			++exprPos;
 
+		} else if(tokenGroup == function){
+			FunctionType functionKey = functionType(inputString + i);
+			char* funcToken = malloc(CHUNK_SIZE);
+			int functionLen;
+
+			// Add function to the expression array and move to the
+			// next token position.
+			switch(functionKey){
+				case sqrt_:
+					functionLen = 4;
+					strncpy(funcToken, "sqrt", functionLen + 1);
+					break;
+				case sin_:
+					functionLen = 3;
+					strncpy(funcToken, "sin", functionLen + 1);
+					break;
+				case cos_:
+					functionLen = 3;
+					strncpy(funcToken, "cos", functionLen + 1);
+					break;
+				case tan_:
+					functionLen = 3;
+					strncpy(funcToken, "tan", functionLen + 1);
+					break;
+				default:
+					break;
+			}
+
+			exprArray[exprPos] = funcToken;
+			++opCount;
+			++exprPos;
+			i += functionLen - 1;
+
 		// Ignore spaces, and tabs.
 		} else if(tokenGroup == whitespace){
 			continue;
@@ -340,6 +385,22 @@ char** strToMathArray(char* inputString){
 Status popAndEval(Stack* opStack, Stack* evalStack){
 	void** opToken = malloc(sizeof(void*));
 	stackPop(opStack, opToken);
+
+	FunctionType functionKey = functionType(*opToken);
+
+	if(functionKey != none){
+		void** operand = malloc(sizeof(void*));
+		stackPop(evalStack, operand);
+
+		double* result = applyFunction(functionKey, *operand);
+		stackPush(evalStack, result);
+
+		free(*opToken);
+		free(opToken);
+		free(*operand);
+		free(operand);
+		return success;
+	}
 
 	// evalStack only can only support unary operations.
 	if(getStackSize(evalStack) == 1){
@@ -431,7 +492,32 @@ double* applyOperation(void* operator, void* lOperandPtr, void* rOperandPtr){
 	return result;
 }
 
-// Check if the priority of operator1 relative to operator2.
+// Applies single argument functions on a given operand.
+double* applyFunction(FunctionType functionKey, void* operandPtr){
+	double operand = *(double*)operandPtr;
+	double* result = malloc(sizeof(double));
+
+	switch(functionKey){
+		case sqrt_:
+			*result = sqrt(operand);
+			break;
+		case sin_:
+			*result = sin(operand);
+			break;
+		case cos_:
+			*result = cos(operand);
+			break;
+		case tan_:
+			*result = tan(operand);
+			break;
+		default:
+			result = NULL;
+	}
+
+	return result;
+}
+
+// Get the priority of operator1 relative to operator2.
 int getPriority(void* operator1, void* operator2){
 	int priority1, priority2;
 
@@ -466,6 +552,7 @@ int getPriority(void* operator1, void* operator2){
 	return priority1 - priority2;
 }
 
+// Returns the associativity of a given token.
 AssocType getAssoc(void* operator){
 	switch(*(char*)operator){
 		case '^':
@@ -476,6 +563,7 @@ AssocType getAssoc(void* operator){
 	}
 }
 
+// Returns the classification of a given token.
 TokenType tokenType(void* token){
 	if(token == NULL){
 		return unknown;
@@ -515,9 +603,28 @@ TokenType tokenType(void* token){
 			return EOL;
 	}
 
-	// Add function patterns in if-else blocks.
+	if(functionType(charToken)){
+		return function;
+	}
 
 	return unknown;
+}
+
+// Returns the function type of a given token.
+FunctionType functionType(void* token){
+	char* charToken = (char*) token;
+
+	if(strncmp(charToken, "sqrt", 4) == 0){
+		return sqrt_;
+	}else if(strncmp(charToken, "sin", 3) == 0){
+		return sin_;
+	} else if(strncmp(charToken, "cos", 3) == 0){
+		return cos_;
+	} else if(strncmp(charToken, "tan", 3) == 0){
+		return tan_;
+	}
+
+	return none;
 }
 
 // Prints the corresponding message to the supplied status.
