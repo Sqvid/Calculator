@@ -1,9 +1,17 @@
 #include <stdio.h>
 #include <string.h>
-#include <math.h>
 #include "Lists/Stacks/stack.h"
 
-#define BUFFER 256
+#define __USE_MISC
+#include <math.h>
+
+#define MK_STRING(x)      #x
+#define CONV_TO_STRING(x) MK_STRING(x)
+
+#define PI         CONV_TO_STRING(M_PI)
+#define EULER      CONV_TO_STRING(M_E)
+#define CONST_ACC  strlen(PI)
+#define BUFFER     256
 #define CHUNK_SIZE 8
 
 typedef enum {
@@ -24,6 +32,7 @@ typedef enum {
 	operator,
 	lbracket,
 	rbracket,
+	constant,
 	function,
 	whitespace,
 	EOL
@@ -42,8 +51,8 @@ typedef enum {
 	right
 } AssocType;
 
-void shuntingYard(char* inputString);
-char** strToMathArray(char* inputString);
+void shuntingYard(char* inputString, double* prevAns);
+char** strToMathArray(char* inputString, double* prevAns);
 Status popAndEval(Stack* opStack, Stack* evalStack);
 double* applyOperation(void* operator, void* lOperandPtr, void* rOperandPtr);
 double* applyFunction(FunctionType functionKey, void* operandPtr);
@@ -52,6 +61,8 @@ AssocType getAssoc(void* operator);
 TokenType tokenType(void* token);
 FunctionType functionType(void* token);
 void printStatus(Status status);
+
+double prevAns = 0.0;
 
 int main(void){
 	while(1){
@@ -65,7 +76,7 @@ int main(void){
 			break;
 		}
 
-		shuntingYard(inputString);
+		shuntingYard(inputString, &prevAns);
 	}
 
 	return 0;
@@ -73,10 +84,10 @@ int main(void){
 
 // Implements the shunting yard algorithm to evaluate the expression on a
 // reverse polish stack.
-void shuntingYard(char* inputString){
+void shuntingYard(char* inputString, double* prevAns){
 	Stack* opStack = stackCreate(free);
 	Stack* evalStack = stackCreate(free);
-	char** exprArray = strToMathArray(inputString);
+	char** exprArray = strToMathArray(inputString, prevAns);
 
 	Status tmpStatus, evalStatus = success;
 	int exprPos, prevOpPos = -1;
@@ -182,6 +193,7 @@ void shuntingYard(char* inputString){
 	if(exprPos != 0 && evalStatus == success){
 		double result = *(double*)stackPeek(evalStack);
 		printf("ANS>> %g\n", result);
+		*prevAns = result;
 	}
 
 	stackDestroy(opStack);
@@ -191,7 +203,7 @@ void shuntingYard(char* inputString){
 
 // Converts the input string into a ragged array.
 // Returns a pointer to the array.
-char** strToMathArray(char* inputString){
+char** strToMathArray(char* inputString, double* prevAns){
 	int exprPos = 0, exprSize = CHUNK_SIZE;
 	char** exprArray = malloc(exprSize * sizeof(char*));
 	int lbracketCount = 0, rbracketCount = 0, digitCount = 0,
@@ -200,7 +212,7 @@ char** strToMathArray(char* inputString){
 
 	for(unsigned int i=0; i<strlen(inputString); ++i){
 		// Reallocate more space in chunks if necessary.
-		if(exprPos % CHUNK_SIZE == 0){
+		if((exprPos + 1) % CHUNK_SIZE == 0){
 			exprSize += CHUNK_SIZE;
 			exprArray = realloc(exprArray, exprSize * sizeof(char*));
 		}
@@ -307,7 +319,22 @@ char** strToMathArray(char* inputString){
 			*(symToken + 1) = '\0';
 			exprArray[exprPos] = symToken;
 			++exprPos;
+		} else if(tokenGroup == constant){
+			char* constToken = malloc(CONST_ACC + 2);
 
+			if(strncmp(inputString + i, "ans", 3) == 0){
+				snprintf(constToken, CONST_ACC + 2, "%lf\n", *prevAns);
+				i += 2;
+			} else if(strncmp(inputString + i, "pi", 2) == 0){
+				strncpy(constToken, PI, CONST_ACC + 1);
+				i += 1;
+			} else if(strncmp(inputString + i, "e", 1) == 0){
+				strncpy(constToken, EULER, CONST_ACC + 1);
+			}
+
+			++digitCount;
+			exprArray[exprPos] = constToken;
+			++exprPos;
 		} else if(tokenGroup == function){
 			FunctionType functionKey = functionType(inputString + i);
 			char* funcToken = malloc(CHUNK_SIZE);
@@ -357,7 +384,7 @@ char** strToMathArray(char* inputString){
 			&& parseStatus != unknownToken){
 
 		parseStatus = noDigit;
-	} else if(opCount == 0 && emptyInput == 0){
+	} else if(opCount == 0 && exprPos != 2 && emptyInput == 0){
 		parseStatus = noOperator;
 	}
 
@@ -601,6 +628,13 @@ TokenType tokenType(void* token){
 		case '\n':
 		case '\0':
 			return EOL;
+	}
+
+	if(strncmp(charToken, "pi", 2) == 0
+			|| strncmp(charToken, "e", 1) == 0
+			|| strncmp(charToken, "ans", 3) == 0){
+
+		return constant;
 	}
 
 	if(functionType(charToken)){

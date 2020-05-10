@@ -9,6 +9,7 @@ shunting yard algorithm to process infix expressions.
 + Precedence-aware calculation.
 + Single-argument functions.
 + Actually descriptive error messages.
++ Mathematical constants and previous answer memory.
 
 ### Functions:
 + `sqrt(...)` square root.
@@ -16,3 +17,8 @@ shunting yard algorithm to process infix expressions.
 + `cos(...)` cosine.
 + `tan(...)` tangent.
 + *More soon.*
+
+### Constants:
++ `pi` Pi.
++ `e` Euler's number.
++ `ans` Previous answer.
