@@ -126,7 +126,8 @@ void shuntingYard(char* inputString, double* prevAns){
 					&& *(char*)stackPeek(opStack) != '('){
 				// While there is an operator on the opStack
 				// with greater or equal precedence.
-				while(getPriority(token, stackPeek(opStack)) <= 0){
+				while(tokenType(stackPeek(opStack)) == operator &&
+						getPriority(token, stackPeek(opStack)) <= 0){
 					if(getPriority(token, stackPeek(opStack)) == 0
 							&& getAssoc(token) == right){
 						break;
