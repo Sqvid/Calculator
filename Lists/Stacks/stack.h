@@ -18,11 +18,11 @@ int stackPop(Stack* stack, void** data);
 
 // Function definitions:
 
-int stackPush(Stack* stack, const void* data){
+int stackPush(Stack* stack, const void* data) {
 	return listAddNext(stack, NULL, data);
 }
 
-int stackPop(Stack* stack, void** data){
+int stackPop(Stack* stack, void** data) {
 	return listDelNext(stack, NULL, data);
 }
 

@@ -5,12 +5,12 @@
 #include <stdlib.h>
 #include <string.h>
 
-typedef struct ListElement_{
+typedef struct _ListElement {
 	void* data;
-	struct ListElement_* next;
+	struct _ListElement* next;
 } ListElement;
 
-typedef struct{
+typedef struct {
 	int size;
 
 	ListElement* head;
@@ -27,6 +27,7 @@ typedef struct{
 #define isListHead(list, element) list->head == element ? 1 : 0
 #define isListTail(list, element) list->tail == element ? 1 : 0
 
+//void listInit(List* list, void (*destroyFunction)(void* data));
 List* listCreate(void (*destroyFunction)(void* data));
 int listAddNext(List* list, ListElement* element, const void* data);
 int listDelNext(List* list, ListElement* element, void** data);
@@ -38,7 +39,7 @@ void listDestroy(List* list);
 
 // Function definitions:
 
-List* listCreate(void (*destroyFunction)(void* data)){
+List* listCreate(void (*destroyFunction)(void* data)) {
 	List* list = malloc(sizeof(List));
 
 	list->size = 0;
@@ -53,10 +54,10 @@ List* listCreate(void (*destroyFunction)(void* data)){
 	return list;
 }
 
-int listAddNext(List* list, ListElement* element, const void* data){
+int listAddNext(List* list, ListElement* element, const void* data) {
 	ListElement* newElement = malloc(sizeof(ListElement));
 
-	if(newElement == NULL){
+	if(newElement == NULL) {
 		fprintf(stderr, "Allocation of list element failed.\n");
 		exit(1);
 	}
@@ -64,18 +65,18 @@ int listAddNext(List* list, ListElement* element, const void* data){
 	newElement->data = (void*) data;
 
 	// Insert at head.
-	if(element == NULL){
+	if(element == NULL) {
 		newElement->next = list->head;
 		list->head = newElement;
 
 		// If this is the only element then the head is the tail.
-		if(getListSize(list) == 0){
+		if(getListSize(list) == 0) {
 			list->tail = newElement;
 		}
 	// Insert element elsewhere.
-	} else{
+	} else {
 		// Insert at tail.
-		if(isListTail(list, element)){
+		if(isListTail(list, element)) {
 			list->tail = newElement;
 		}
 
@@ -88,25 +89,25 @@ int listAddNext(List* list, ListElement* element, const void* data){
 }
 
 // void** data will hold the data from the deleted element.
-int listDelNext(List* list, ListElement* element, void** data){
+int listDelNext(List* list, ListElement* element, void** data) {
 	ListElement* oldElement;
 
 	// Attempting removal of element from an empty list.
-	if(getListSize(list) == 0){
+	if(getListSize(list) == 0) {
 		return -1;
 	}
 
-	if(element == NULL){
+	if(element == NULL) {
 		oldElement = list->head;
 		*data = oldElement->data;
 		list->head = oldElement->next;
 
-		if(list->size == 1){
+		if(list->size == 1) {
 			list->tail = list->head;
 		}
-	} else{
+	} else {
 		// Attempting removal after tail.
-		if(element == list->tail){
+		if(element == list->tail) {
 			return -1;
 		}
 
@@ -114,7 +115,7 @@ int listDelNext(List* list, ListElement* element, void** data){
 		*data = oldElement->data;
 		element->next = oldElement->next;
 
-		if(element->next == NULL){
+		if(element->next == NULL) {
 			list->tail = element;
 		}
 	}
@@ -125,22 +126,22 @@ int listDelNext(List* list, ListElement* element, void** data){
 }
 
 // Adds a new element at the specified index of the list.
-int listAddIndex(List* list, int index, const void* data){
+int listAddIndex(List* list, int index, const void* data) {
 	ListElement* current = getListHead(list);
 
-	if(index > getListSize(list)){
+	if(index > getListSize(list)) {
 		fprintf(stderr, "Attempting to add element at index %d, ", index);
 		fprintf(stderr, "but list is only of size %d.\n", getListSize(list));
 		exit(1);
 	// Add at head.
-	} else if(index == 0){
+	} else if(index == 0) {
 		listAddNext(list, NULL, data);
 	// Add at tail.
-	} else if(index == getListSize(list)){
+	} else if(index == getListSize(list)) {
 		listAddNext(list, list->tail, data);
 	// Add elsewhere.
-	} else{
-		for(int i=0; i<index-1; ++i){
+	} else {
+		for(int i = 0; i < index - 1; ++i) {
 			current = getNextElement(current);
 		}
 
@@ -150,18 +151,18 @@ int listAddIndex(List* list, int index, const void* data){
 	return 0;
 }
 
-int listDelIndex(List* list, int index, void** data){
+int listDelIndex(List* list, int index, void** data) {
 	ListElement* current = getListHead(list);
 
-	if(index > getListSize(list) - 1){
+	if(index > getListSize(list) - 1) {
 		fprintf(stderr, "There is no element to delete at the specified index.\n");
 		exit(1);
 	// Delete at head.
-	} else if(index == 0){
+	} else if(index == 0) {
 		listDelNext(list, NULL, data);
 	// Add elsewhere.
-	} else{
-		for(int i=0; i<index-1; ++i){
+	} else {
+		for(int i = 0; i < index - 1; ++i) {
 			current = getNextElement(current);
 		}
 
@@ -172,8 +173,8 @@ int listDelIndex(List* list, int index, void** data){
 }
 
 // Appends list2 to list1.
-int listCat(List* list1, List* list2){
-	if(getListSize(list1) == 0 || getListSize(list2) == 0){
+int listCat(List* list1, List* list2) {
+	if(getListSize(list1) == 0 || getListSize(list2) == 0) {
 		return -1;
 	}
 
@@ -185,12 +186,12 @@ int listCat(List* list1, List* list2){
 }
 
 // Safely delete list.
-void listDestroy(List* list){
+void listDestroy(List* list) {
 	void* data;
 
-	while(getListSize(list) > 0){
+	while(getListSize(list) > 0) {
 		if(listDelNext(list, NULL, (void**) &data) == 0 \
-				&& list->destroyFunction != NULL){
+				&& list->destroyFunction != NULL) {
 
 				list->destroyFunction(data);
 		}
