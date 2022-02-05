@@ -16,7 +16,7 @@ shunting yard algorithm to process infix expressions.
 + `sin(...)` sine.
 + `cos(...)` cosine.
 + `tan(...)` tangent.
-+ *More soon.*
++ *More soon.<sup>TM</sup>*
 
 ### Constants:
 + `pi` Pi.
