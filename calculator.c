@@ -1,18 +1,19 @@
 #include <stdio.h>
 #include <string.h>
-#include "Lists/Stacks/stack.h"
-
-#define __USE_MISC
 #include <math.h>
+
+#include "Lists/Stacks/stack.h"
 
 #define MK_STRING(x)      #x
 #define CONV_TO_STRING(x) MK_STRING(x)
 
-#define PI         CONV_TO_STRING(M_PI)
-#define EULER      CONV_TO_STRING(M_E)
-#define CONST_ACC  strlen(PI)
-#define BUFFER     256
-#define CHUNK_SIZE 8
+# define E              2.7182818284590452354
+# define PI             3.1415926535897932384
+#define STR_E           CONV_TO_STRING(E)
+#define STR_PI          CONV_TO_STRING(PI)
+#define CONST_ACC       strlen(STR_PI)
+#define BUFFER          256
+#define CHUNK_SIZE      8
 
 typedef enum {
 	success,
@@ -327,10 +328,10 @@ char** strToMathArray(char* inputString, double* prevAns) {
 				snprintf(constToken, CONST_ACC + 2, "%lf\n", *prevAns);
 				i += 2;
 			} else if(strncmp(inputString + i, "pi", 2) == 0) {
-				strncpy(constToken, PI, CONST_ACC + 1);
+				strncpy(constToken, STR_PI, CONST_ACC + 1);
 				i += 1;
 			} else if(strncmp(inputString + i, "e", 1) == 0) {
-				strncpy(constToken, EULER, CONST_ACC + 1);
+				strncpy(constToken, STR_E, CONST_ACC + 1);
 			}
 
 			++digitCount;
