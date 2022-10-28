@@ -7,8 +7,8 @@
 #define MK_STRING(x)      #x
 #define CONV_TO_STRING(x) MK_STRING(x)
 
-# define E              2.7182818284590452354
-# define PI             3.1415926535897932384
+#define E               2.7182818284590452354
+#define PI              3.1415926535897932384
 #define STR_E           CONV_TO_STRING(E)
 #define STR_PI          CONV_TO_STRING(PI)
 #define CONST_ACC       strlen(STR_PI)
